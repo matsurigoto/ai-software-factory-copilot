@@ -61,7 +61,7 @@ flowchart TB
         end
 
         subgraph Orch["🧠 協調器層 · ns-orchestrator"]
-            MAF[Microsoft Agent Framework<br/>或 LangGraph · SDLC 狀態機]
+            MAF[LangGraph · SDLC 狀態機<br/>OSS library 自行容器化<br/>（備選：Microsoft Agent Framework）]
             Temporal[Temporal Server<br/>持久化工作流 / 人工審核]
             A2A[A2A / MCP 互通層]
         end
@@ -134,7 +134,7 @@ flowchart TB
 | 層 | 職責 | 關鍵設計原則 |
 |---|---|---|
 | **知識庫層** | PM 撰寫 URD；轉換為結構化 Spec；提供 RAG 查詢；集中管理 Skills | Markdown + Git 為唯一真相來源；所有內容透過 MCP 對 Agent 曝露 |
-| **協調器層** | SDLC 狀態機、派工、人工審核閘門、重試、稽核 | 協調邏輯與 Agent 實作解耦；用 A2A/MCP 呼叫 Agent，不綁定特定框架 |
+| **協調器層** | SDLC 狀態機、派工、人工審核閘門、重試、稽核 | **LangGraph OSS library**（階段內 Agent 推理圖，Postgres checkpointer）+ **Temporal**（跨階段/跨日流程、人工閘門、重試）；協調邏輯與 Agent 實作解耦，用 A2A/MCP 呼叫 Agent |
 | **Agent 池** | 各階段專責 Agent，可替換 | 同一份 Skills 投影到不同 Agent；Agent 產出必須是 Git diff / PR / 測試報告等可驗證產物 |
 | **基礎設施** | LLM 閘道、沙箱、觀測 | 所有 LLM 呼叫經單一閘道（路由/成本/稽核）；模型全部跑在內網 GPU 節點池；每個任務在 gVisor/Kata 沙箱節點池執行 |
 | **Azure DevOps Services** | 系統記錄 (System of Record)，**唯一雲端元件** | 叢集只做出站連線（HTTPS 白名單）；透過官方 MCP Server（stdio，以 sidecar 橋接）；叢集無公開入口 → 不用 Service Hooks，改 REST 輪詢或由 Pipeline（self-hosted agent）觸發 |
@@ -150,7 +150,7 @@ flowchart TB
 | **GPU 節點池** | NVIDIA GPU Operator；vLLM `production-stack` Helm（官方）；LiteLLM 官方 Helm | 離線環境需預先鏡像 driver container；Ollama 僅社群 chart，限開發機 |
 | **沙箱節點池** | gVisor RuntimeClass（預設）/ Kata（需 VM 級隔離時）；OpenHands Agent Server（官方 Helm，無需 Docker socket） | Coding/Test Agent 以 Job 執行，不給 privileged |
 | **ns-platform** | Onyx 官方 Helm（含 OpenSearch 索引 / SeaweedFS；Onyx 不外接 Qdrant）；Qdrant 官方 Helm 作 Agent 自訂管線的共享向量庫（標註非 production-ready，需自管備份；Phase 2 再部署）；Docmost **無官方 chart**（自寫 manifests） | |
-| **ns-orchestrator** | Temporal 官方 Helm（僅 server 層，DB 自管）；MAF/LangGraph 自行容器化 | LangGraph **Platform** 自建需 Enterprise 授權且回連 LangChain → 只用 OSS library |
+| **ns-orchestrator** | Temporal 官方 Helm（僅 server 層，DB 自管）；LangGraph OSS library 自行容器化為 Deployment（checkpointer 用 CloudNativePG `langgraph-checkpoint-postgres`） | LangGraph **Platform** 自建需 Enterprise 授權且回連 LangChain → **只用 OSS library**；LangSmith 雲端排除，追蹤走 OTel → Phoenix |
 | **ns-agents** | Goose/Aider 官方映像作 Job；Qwen Code 自建映像（有 `qwen serve` daemon）；PR-Agent 以 Pipeline 步驟（Build Validation）執行，不開 webhook 入口；ADO MCP stdio + `mcp-proxy`/`supergateway` sidecar | |
 | **測試/安全** | k6-operator（官方，避免 PrivateLoadZone）；trivy-operator（官方）；SonarQube 官方 Helm（關閉 privileged init，改節點層 sysctl）；ZAP/Nuclei/Schemathesis 作 Job；browser-use/Playwright MCP 容器內 `--no-sandbox` | **Keploy** OSS 需 root/eBPF，K8s 原生模式為商業+雲端 → 降為選配、隔離 VM |
 | **ns-observability / data** | Phoenix Helm；ReportPortal 官方 Helm；CloudNativePG + Redis Operator + S3 相容儲存**集中共用** | Allure 僅社群 `allure-docker-service` |
@@ -179,8 +179,8 @@ flowchart TB
 
 | 工具 | 星數 / 授權 | 自建 | 模型中立 | 評價 |
 |---|---|---|---|---|
-| **Microsoft Agent Framework** | 14.6k / MIT | ✅ | ✅ MCP+A2A 原生 | ✅ **首選**。AutoGen+Semantic Kernel 繼任者，Python/.NET，企業級工作流，與 Azure 生態自然銜接但不鎖定 |
-| **LangGraph** | 44.6k / MIT | ✅ | ✅ | ✅ 最成熟的狀態機引擎，最中立；需自行組裝治理層 |
+| **LangGraph** | 44.6k / MIT | ✅ OSS library | ✅ | ✅ **首選**。最成熟的狀態機引擎、最中立、生態最大；Postgres checkpointer 原生支援人工中斷/恢復（interrupt）；MCP 經 `langchain-mcp-adapters`、A2A 經社群套件。治理/觀測層需自組（OTel → Phoenix）。**不用 LangGraph Platform / LangSmith 雲端** |
+| **Microsoft Agent Framework** | 14.6k / MIT | ✅ | ✅ MCP+A2A 原生 | ✅ **備選**。AutoGen+Semantic Kernel 繼任者，Python/.NET，MCP/A2A 原生，與 ADO 生態銜接；較年輕、社群較小 |
 | **CrewAI** | 60.6k / MIT | ✅ | ✅ | ✅ 角色式「部門」模型直覺；持久化執行較弱，適合搭配 LangGraph |
 | **Temporal** | 成熟 / OSS | ✅ | N/A | ✅ **持久化骨幹**。多日等待人工審核、崩潰恢復、稽核 |
 | OpenAI Agents SDK | 30.5k | ✅ | ✅ (100+ LLM) | 🟡 輕量可用，生態偏 OpenAI |
@@ -364,7 +364,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 
 | 層 | 首選 | 備選 / 補充 |
 |---|---|---|
-| **協調器** | Microsoft Agent Framework + Temporal（官方 Helm，DB 自管） | LangGraph OSS library + CrewAI（**不用** LangGraph Platform：需 Enterprise 授權且回連雲端） |
+| **協調器** | **LangGraph OSS library**（SDLC 狀態機，Postgres checkpointer）+ **Temporal**（官方 Helm，DB 自管；跨日人工審核、崩潰恢復）+ CrewAI（選配，角色式部門抽象） | Microsoft Agent Framework（MCP/A2A 原生，.NET 團隊）。**不用** LangGraph Platform / LangSmith（需 Enterprise 授權且回連雲端） |
 | **互通協定** | MCP（工具）+ A2A（Agent 間）+ Agent Skills（知識） | — |
 | **ADO 整合** | Azure DevOps **Services**（唯一雲端）+ microsoft/azure-devops-mcp（stdio Local 模式，`mcp-proxy` sidecar 橋接）+ ADO REST/Python SDK；雲端→叢集以輪詢 / Pipeline agent 拉取 | ADO MCP Remote 模式（資安核可後） |
 | **Wiki / URD** | Azure DevOps Wiki | + Docmost（PM 需要更好 UX 與簽核流程時；無官方 Helm，自寫 manifests） |
@@ -427,7 +427,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 - 測試結果以 Work Item ID 標記 → Test Plans / Allure / ReportPortal（Helm）
 
 ### Phase 4 — 協調器整合（端到端）
-- 以 MAF（或 LangGraph）實作 SDLC 狀態機；Temporal 承載長時工作流與人工審核閘門
+- 以 **LangGraph** 實作 SDLC 狀態機（`langgraph-checkpoint-postgres` 存 CloudNativePG；`interrupt()` 作人工審核節點；MCP 工具經 `langchain-mcp-adapters`）；Temporal 承載跨日長時工作流、重試與稽核
 - 以 A2A/MCP 封裝各階段 Agent；協調器依任務性質路由至不同 Coding Agent
 - Promptfoo / DeepEval 納入 CI，Agent prompt/skill 變更需通過評測
 - 擴大到多部門；建立 Skill 貢獻流程與 Agent 效能儀表板
@@ -468,7 +468,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 
 1. 評審本規劃文件與四份研究報告
 2. 法務/資安審查授權清單（AGPL 工具、開源模型權重）與 GPU 容量規劃（Phase 0）
-3. 決定協調器框架（MAF vs LangGraph+CrewAI）
+3. ~~決定協調器框架~~ → **已定案 LangGraph OSS library**；待決：LangGraph 與 Temporal 的職責切分（建議：LangGraph 管單一 SDLC 階段內的 Agent 推理圖，Temporal 管跨階段、跨日的流程與人工閘門）
 4. 決定 Wiki（ADO Wiki vs +Docmost）與 Spec 格式（OpenSpec vs Spec Kit）
 5. 決定 Coding Agent 池（Goose / Qwen Code / Aider）、本地模型與試點團隊
 6. 規劃 Phase 0 基礎設施 PoC（LiteLLM、ADO MCP、Phoenix、沙箱）
