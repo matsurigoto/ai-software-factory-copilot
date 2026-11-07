@@ -229,7 +229,7 @@ flowchart TB
 | 工具 | 授權 / 星數 | MCP | 評價 |
 |---|---|---|---|
 | **Onyx** (前 Danswer) | MIT core / 33k | ✅ **雙向官方**（本身是 MCP Server 也可消費 MCP） | ✅ **首選，同時作為 PM 的 AI 互動入口**。企業搜尋定位、Confluence DC 連接器、Ollama/vLLM 原生支援、Assistants（自訂人格/Prompt）、答案帶引用 |
-| RAGFlow | Apache / 94k | 社群 | 🟡 解析引擎強（DeepDoc、知識圖譜），連接器與 MCP 弱 |
+| **RAGFlow** | Apache-2.0 / 94k | ✅ 官方 MCP Server（專用 9382 port）；消費端待確認 | 🟡 **文件理解最強**（DeepDoc 版面/OCR/表格、Knowledge Compilation）、連接器廣（含 Azure DevOps、Confluence、SharePoint）、內建 Agent 工作流；但**無官方 Helm**、OSS 無 SSO/細粒度 RBAC、v1.0 Go 重寫剛釋出。詳見下方比較 |
 | LlamaIndex | MIT / 53k | 官方 (消費端) | ✅ 自訂管線的框架備選 |
 | Dify | 修改版 Apache / 160k | 官方 (消費端) | 🟡 低程式碼工作流 App；若 Onyx Assistants 不足以表達多步驟訪談流程時補充 |
 | AnythingLLM | MIT / 68k | 消費端 | 🟡 小團隊 chat-with-wiki |
@@ -237,6 +237,24 @@ flowchart TB
 | LightRAG | MIT / 41k | 社群 | 🟡 輕量 Graph-RAG 引擎，需膠水 |
 | Microsoft GraphRAG | MIT | — | ❌ 維護模式 |
 | **向量庫** | | | **Qdrant**（Apache，效能/過濾強）或 **pgvector**（已有 Postgres 時最低維運） |
+
+**Onyx vs RAGFlow 深入比較**（RAGFlow 資料依 v1.0.0，2026-11-06 釋出，Python→Go 重寫）
+
+| 面向 | Onyx | RAGFlow | 對本案的意義 |
+|---|---|---|---|
+| 授權 / 星數 | MIT core（EE 功能另授權）/ 33k | Apache-2.0 / 94k | 兩者皆可商用自建；RAGFlow 社群規模大 3 倍 |
+| **K8s 部署** | ✅ 官方 Helm chart（Vespa 可換 OpenSearch、S3 相容儲存） | ❌ **無官方 Helm / K8s 文件**，僅 Docker Compose；多服務（API/Admin/Ingestor/Syncer）+ MySQL + ES 或 Infinity + MinIO + Kvrocks + NATS + ClickHouse，需自寫 chart | **K8s 落地最大差距**；RAGFlow 需投入自建 chart 與 7 個有狀態元件的維運 |
+| 資源需求 | 中（Postgres + 向量庫 + 模型伺服器） | 4 核 / 16 GB / 50 GB 起；DeepDoc 1.0 版 **僅 CPU 推論** | RAGFlow 解析大量 PDF 時 CPU 壓力高 |
+| 連接器 | Confluence、Web、檔案、Git、SharePoint、Slack 等；**無原生 ADO** | 極廣：Confluence、SharePoint、OneDrive、S3、GitHub/GitLab/**Azure DevOps**、Jira、網站 sitemap、DB…皆支援增量同步 | RAGFlow 有 ADO 連接器（**是否涵蓋 Wiki 頁面待確認**）；Onyx 需用 Web/檔案連接器或自寫 |
+| 文件解析 | 一般（文字抽取 + 分塊） | ✅ **DeepDoc**：版面辨識、OCR、表格結構還原；範本式分塊；Knowledge Compilation 產 Wiki/Graph/Tree/Mindmap/Timeline（取代舊 GraphRAG/RAPTOR） | 若舊 URD/規格多為掃描 PDF、含複雜表格，RAGFlow 明顯占優 |
+| MCP | ✅ 雙向官方（Server + 消費 MCP 工具） | ✅ 官方 MCP Server（9382）；Agent 消費外部 MCP 工具**待確認** | 全廠知識 MCP Server 兩者皆可擔任 |
+| PM 互動介面 | ✅ Assistants（自訂人格/Prompt/工具）、答案帶引用、企業搜尋 UX | ✅ 視覺化 Agent 工作流畫布（Switch/Loop/Categorize/Code/HTTP 節點）、可嵌入網頁 | Onyx 偏「對話助理」；RAGFlow 偏「可編排流程」，可補 Dify 的角色 |
+| 模型支援 | Ollama / vLLM / OpenAI 相容原生 | vLLM / Ollama 官方指南；OpenAI 相容自訂供應商（LiteLLM 可接但未明文）；TEI 本地 embedding（Qwen3-Embedding / bge-m3） | 兩者皆可走 LiteLLM → vLLM |
+| 企業功能 | OSS 含基本 SSO（OIDC/SAML 部分在 EE）、RBAC/稽核屬 EE | OSS 有 Teams/資料集共享/Admin 服務；**未見 SSO/OIDC 與細粒度 RBAC 文件**（推測商業版） | 兩者皆需核對 EE 邊界；RAGFlow 可能需前置 oauth2-proxy |
+| 成熟度風險 | 穩定、迭代快 | v1.0.0 **剛釋出一天**（架構重寫），舊教學多描述 Python 版，預期短期內變動大 | RAGFlow 建議至少觀察 1–2 個小版本再導入生產 |
+| 中文處理 | 一般 | ✅ 中文市場為主要客群，中文文件/分詞表現佳 | 若 URD 以中文為主，RAGFlow 加分 |
+
+**結論**：維持 **Onyx 為 PM 互動入口與全廠 MCP 知識伺服器**（K8s 官方 Helm、雙向 MCP、Assistants UX 貼合 PM 使用情境）。**RAGFlow 列為「文件解析引擎」備選 / 補充**：若 Phase 1 PoC 發現 Onyx 對掃描 PDF、複雜表格、中文舊規格的解析品質不足，可以 RAGFlow 作為前處理層（DeepDoc 解析 → 匯出分塊 → 寫入共享 Qdrant）或獨立知識庫，並透過其 MCP Server 接入協調器。導入前提：自建 Helm chart、確認 ADO 連接器涵蓋 Wiki、等待 v1.0.x 穩定。
 
 **PM 需求分析工作流（以 Onyx 為中心）**
 
@@ -346,7 +364,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 | **Wiki / URD** | Azure DevOps Wiki | + Docmost（PM 需要更好 UX 與簽核流程時；無官方 Helm，自寫 manifests） |
 | **Spec 格式** | OpenSpec（Stores 模式獨立 Spec Repo） | GitHub Spec Kit |
 | **需求轉換** | 自建 Agent（參考 awesome-copilot `breakdown-feature-prd`）：Wiki → OpenSpec → Boards | BMAD-Method 人格 |
-| **PM AI 互動入口 + RAG** | **Onyx**（官方 Helm；Assistants 載入 BMAD PM 人格 / PRD skill；同時是全廠知識 MCP Server）+ Qdrant（官方 Helm）/pgvector | Dify（複雜多步驟訪談流程）；LlamaIndex 自訂管線 |
+| **PM AI 互動入口 + RAG** | **Onyx**（官方 Helm；Assistants 載入 BMAD PM 人格 / PRD skill；同時是全廠知識 MCP Server）+ Qdrant（官方 Helm）/pgvector | **RAGFlow**（文件解析前處理層：掃描 PDF / 複雜表格 / 中文舊規格；需自建 Helm）；Dify（複雜多步驟訪談流程）；LlamaIndex 自訂管線 |
 | **會議轉錄** | whisper-asr-webservice（WhisperX 引擎，K8s 服務） | Speaches（OpenAI 相容 API） |
 | **Coding Agent 池** | Goose（通用/MCP 工具密集）· Qwen Code（複雜多步驟）· Aider（精準實作/測試撰寫）— 皆以 K8s Job 執行 | OpenHands Agent Server（官方 Helm）作執行層；Cline / Continue 備選 |
 | **Skill Library** | 單一 `skills-library` Repo（SKILL.md）→ CI 投影到各 Agent 格式 | 種子：anthropics/skills、awesome-copilot（僅格式/內容參考） |
@@ -384,6 +402,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 - 部署 **Onyx（官方 Helm）+ Qdrant**（接本地 vLLM），接入 Wiki / Spec Store / 既有文件
 - 建立 Onyx Assistants：「需求分析師」（BMAD PM 人格 + PRD skill 結構）、「驗收條件撰寫」；選 1–2 位 PM 試用並迭代 Prompt
 - 驗證 Onyx 作為 MCP Server 供 Agent 查詢；驗證 Onyx 對 ADO Wiki 的索引方式
+- 以同一批舊 URD / 掃描 PDF 樣本對比 Onyx 與 RAGFlow（DeepDoc）解析與檢索品質，決定是否導入 RAGFlow 作前處理層
 - 建置**需求轉換 Agent** PoC：Wiki URD → OpenSpec → Boards Work Items（含回寫連結）
 - （選配）whisper-asr-webservice 會議轉錄 → Onyx Assistant → URD 草稿管線
 
