@@ -49,10 +49,11 @@ flowchart TB
     end
 
     subgraph KB["📚 知識庫層"]
-        Wiki[Azure DevOps Wiki<br/>或 Docmost<br/>URD 敘述文件]
+        Onyx[Onyx Assistants + Qdrant<br/>PM 需求分析對話入口<br/>企業搜尋 / 全廠 MCP Server]
+        Wiki[Azure DevOps Wiki<br/>或 Docmost（簽核）<br/>URD 敘述文件]
         Spec[Spec Store<br/>OpenSpec / Spec Kit<br/>結構化需求 Git Repo]
-        RAG[Onyx RAG + Qdrant<br/>企業搜尋 / MCP Server]
         Skills[Skills Library Repo<br/>SKILL.md 單一來源]
+        Meet[Meetily / whisperX<br/>會議轉錄]
     end
 
     subgraph Orch["🧠 協調器層"]
@@ -84,17 +85,19 @@ flowchart TB
         TestPlans[Test Plans]
     end
 
-    PM --> Wiki
+    Meet -.紀要.-> Onyx
+    PM <-->|對話產出 URD| Onyx
+    Onyx --> Wiki
     Wiki --> ReqAgent --> Spec
     ReqAgent --> Boards
-    Spec --> RAG
-    Wiki --> RAG
+    Spec --> Onyx
+    Wiki --> Onyx
     Skills -.投影.-> CodeAgents & TestAgents
 
     Boards --> MAF
     MAF <--> Temporal
     MAF --> A2A --> ArchAgent & CodeAgents & TestAgents & ReviewAgent
-    RAG -.MCP.-> Agents
+    Onyx -.MCP.-> Agents
     Agents -.MCP.-> ADOMCP[Azure DevOps MCP Server<br/>Local mode]
     ADOMCP --> Boards & Repos & Pipelines & TestPlans
 
