@@ -230,6 +230,7 @@ flowchart TB
 |---|---|---|---|
 | **Onyx** (前 Danswer) | MIT core / 33k | ✅ **雙向官方**（本身是 MCP Server 也可消費 MCP） | ✅ **首選，同時作為 PM 的 AI 互動入口**。企業搜尋定位、Confluence DC 連接器、Ollama/vLLM 原生支援、Assistants（自訂人格/Prompt）、答案帶引用 |
 | **RAGFlow** | Apache-2.0 / 94k | ✅ 官方 MCP Server（專用 9382 port）；消費端待確認 | 🟡 **文件理解最強**（DeepDoc 版面/OCR/表格、Knowledge Compilation）、連接器廣（含 Azure DevOps、Confluence、SharePoint）、內建 Agent 工作流；但**無官方 Helm**、OSS 無 SSO/細粒度 RBAC、v1.0 Go 重寫剛釋出。詳見下方比較 |
+| **WeKnora**（騰訊 WXG） | MIT（GitHub 偵測為 NOASSERTION）/ 37k | ✅ 內建官方 MCP Server（每 workspace 端點、Streamable HTTP、範圍 token） | 🟡 **全功能一體化平台**（RAG + ReAct Agent + 自動 Wiki + Skills 沙箱 + 記憶）、**官方 Helm**、OSS 含 OIDC / 4 層 RBAC / 稽核；但偏中國生態連接器（飛書/釘釘/語雀，無 SharePoint/ADO）、文件以中文為主、Skills 沙箱需 docker.sock、v0.9 尚未 1.0。詳見下方比較 |
 | LlamaIndex | MIT / 53k | 官方 (消費端) | ✅ 自訂管線的框架備選 |
 | Dify | 修改版 Apache / 160k | 官方 (消費端) | 🟡 低程式碼工作流 App；若 Onyx Assistants 不足以表達多步驟訪談流程時補充 |
 | AnythingLLM | MIT / 68k | 消費端 | 🟡 小團隊 chat-with-wiki |
@@ -238,24 +239,29 @@ flowchart TB
 | Microsoft GraphRAG | MIT | — | ❌ 維護模式 |
 | **向量庫** | | | **Qdrant**（Apache，效能/過濾強）或 **pgvector**（已有 Postgres 時最低維運） |
 
-**Onyx vs RAGFlow 深入比較**（RAGFlow 資料依 v1.0.0，2026-11-06 釋出，Python→Go 重寫）
+**Onyx vs RAGFlow vs WeKnora 深入比較**（RAGFlow 依 v1.0.0，2026-11-06 釋出，Python→Go 重寫；WeKnora 依 v0.9.0，2026-10-29）
 
-| 面向 | Onyx | RAGFlow | 對本案的意義 |
-|---|---|---|---|
-| 授權 / 星數 | MIT core（EE 功能另授權）/ 33k | Apache-2.0 / 94k | 兩者皆可商用自建；RAGFlow 社群規模大 3 倍 |
-| **K8s 部署** | ✅ 官方 Helm chart（Vespa 可換 OpenSearch、S3 相容儲存） | ❌ **無官方 Helm / K8s 文件**，僅 Docker Compose；多服務（API/Admin/Ingestor/Syncer）+ MySQL + ES 或 Infinity + MinIO + Kvrocks + NATS + ClickHouse，需自寫 chart | **K8s 落地最大差距**；RAGFlow 需投入自建 chart 與 7 個有狀態元件的維運 |
-| 資源需求 | 中（Postgres + 向量庫 + 模型伺服器） | 4 核 / 16 GB / 50 GB 起；DeepDoc 1.0 版 **僅 CPU 推論** | RAGFlow 解析大量 PDF 時 CPU 壓力高 |
-| 連接器 | Confluence、Web、檔案、Git、SharePoint、Slack 等；**無原生 ADO** | 極廣：Confluence、SharePoint、OneDrive、S3、GitHub/GitLab/**Azure DevOps**、Jira、網站 sitemap、DB…皆支援增量同步 | RAGFlow 有 ADO 連接器（**是否涵蓋 Wiki 頁面待確認**）；Onyx 需用 Web/檔案連接器或自寫 |
-| 文件解析 | 一般（文字抽取 + 分塊） | ✅ **DeepDoc**：版面辨識、OCR、表格結構還原；範本式分塊；Knowledge Compilation 產 Wiki/Graph/Tree/Mindmap/Timeline（取代舊 GraphRAG/RAPTOR） | 若舊 URD/規格多為掃描 PDF、含複雜表格，RAGFlow 明顯占優 |
-| MCP | ✅ 雙向官方（Server + 消費 MCP 工具） | ✅ 官方 MCP Server（9382）；Agent 消費外部 MCP 工具**待確認** | 全廠知識 MCP Server 兩者皆可擔任 |
-| PM 互動介面 | ✅ Assistants（自訂人格/Prompt/工具）、答案帶引用、企業搜尋 UX | ✅ 視覺化 Agent 工作流畫布（Switch/Loop/Categorize/Code/HTTP 節點）、可嵌入網頁 | Onyx 偏「對話助理」；RAGFlow 偏「可編排流程」，可補 Dify 的角色 |
-| 模型支援 | Ollama / vLLM / OpenAI 相容原生 | vLLM / Ollama 官方指南；OpenAI 相容自訂供應商（LiteLLM 可接但未明文）；TEI 本地 embedding（Qwen3-Embedding / bge-m3） | 兩者皆可走 LiteLLM → vLLM |
-| 企業功能 | OSS 含基本 SSO（OIDC/SAML 部分在 EE）、RBAC/稽核屬 EE | OSS 有 Teams/資料集共享/Admin 服務；**未見 SSO/OIDC 與細粒度 RBAC 文件**（推測商業版） | 兩者皆需核對 EE 邊界；RAGFlow 可能需前置 oauth2-proxy |
-| 成熟度風險 | 穩定、迭代快 | v1.0.0 **剛釋出一天**（架構重寫），舊教學多描述 Python 版，預期短期內變動大 | RAGFlow 建議至少觀察 1–2 個小版本再導入生產 |
-| 中文處理 | 一般 | ✅ 中文市場為主要客群，中文文件/分詞表現佳 | 若 URD 以中文為主，RAGFlow 加分 |
+| 面向 | Onyx | RAGFlow | WeKnora（騰訊 WXG） | 對本案的意義 |
+|---|---|---|---|---|
+| 授權 / 星數 | MIT core（EE 功能另授權）/ 33k | Apache-2.0 / 94k | MIT（LICENSE 全文；GitHub 自動偵測為 NOASSERTION，需法務確認）/ 37k（2025-07 建立，成長極快） | 三者皆可商用自建 |
+| **K8s 部署** | ✅ 官方 Helm chart（Vespa 可換 OpenSearch、S3 相容儲存） | ❌ **無官方 Helm / K8s 文件**，僅 Docker Compose；多服務 + MySQL + ES/Infinity + MinIO + Kvrocks + NATS + ClickHouse，需自寫 chart | ✅ **官方 in-repo Helm**（`helm/`，K8s ≥ 1.25）；app + frontend + docreader + ParadeDB + Redis；選配 Neo4j / MinIO / Langfuse；預設資源極小需重設 | Onyx 與 WeKnora 可直接落地；RAGFlow 需投入 chart 與 7 個有狀態元件維運 |
+| 資源需求 | 中 | 4 核 / 16 GB / 50 GB 起；DeepDoc 1.0 **僅 CPU** | 4 vCPU / 8 GB 起；docreader 含 LibreOffice + Playwright 吃記憶體；ParadeDB 需 x86-64-v2 | 皆為中等；WeKnora Skills 沙箱另需 Docker |
+| 連接器 | Confluence、Web、檔案、Git、SharePoint、Slack；**無原生 ADO** | 極廣：Confluence、SharePoint、OneDrive、S3、GitHub/GitLab/**Azure DevOps**、Jira、sitemap、DB，皆增量同步 | 飛書/Lark、Confluence（PAT）、GitLab、Notion、語雀、釘釘、Seafile、RSS、騰訊 IMA；**無 SharePoint / ADO** | 只有 RAGFlow 有 ADO 連接器（Wiki 涵蓋待確認）；Onyx / WeKnora 需 Web/檔案連接器或自寫 |
+| 文件解析 | 一般（文字抽取 + 分塊） | ✅ **DeepDoc**：版面辨識、OCR、表格結構還原；範本式分塊；Knowledge Compilation（Wiki/Graph/Tree/Mindmap/Timeline） | ✅ 10+ 格式（含 EPUB/XMind）、PaddleOCR-VL、VLM 圖片描述、多模態 embedding、父子/自適應分塊、chunk 編輯與版本回溯 | 掃描 PDF / 複雜表格：RAGFlow ≥ WeKnora > Onyx |
+| 檢索 / 知識圖譜 | 混合檢索 + rerank | 混合檢索 + rerank；圖譜以 Knowledge Compilation 產出 | ParadeDB BM25 + pgvector 單引擎混合檢索 + rerank；選配 **Neo4j GraphRAG**；自動 Wiki 知識圖譜 | WeKnora 圖譜能力最完整但多一個 Neo4j |
+| MCP | ✅ 雙向官方（Server + 消費 MCP 工具） | ✅ 官方 MCP Server（9382）；消費端**待確認** | ✅ 內建官方 MCP Server（每 workspace 端點、Streamable HTTP、範圍 token / 速率限制）；Agent 亦可消費 MCP 工具 | 三者皆可擔任全廠知識 MCP Server；WeKnora 的多租戶 MCP 端點設計最細 |
+| PM 互動介面 | ✅ Assistants（自訂人格/Prompt/工具）、答案帶引用、企業搜尋 UX | ✅ 視覺化 Agent 工作流畫布、可嵌入網頁 | ✅ ReAct Agent 模式（steer / fork / rewind）、跨會話長期記憶、自動 Wiki、Skills（含瀏覽器）、自動化排程、微信小程式 / IM 通道 | Onyx 偏「對話助理」；RAGFlow 偏「可編排流程」；WeKnora 偏「全功能 Agent 平台」，功能最多但範圍最廣 |
+| 模型支援 | Ollama / vLLM / OpenAI 相容原生 | vLLM / Ollama 官方指南；OpenAI 相容自訂供應商；TEI 本地 embedding | 29 家供應商（含 Ollama、LiteLLM、Azure OpenAI、混元）；「任意 OpenAI 相容 API」→ vLLM 應可接但**未明文**；混元僅為選項，無硬相依 | 三者皆可走 LiteLLM → vLLM |
+| 企業功能 | OSS 基本 SSO；RBAC / 稽核屬 EE | OSS 有 Teams / Admin；**未見 SSO / 細粒度 RBAC** | ✅ **OSS 即含 OIDC**（JWKS）、workspace 多租戶、**4 層 RBAC**（Owner/Admin/Contributor/Viewer）、每 workspace 稽核日誌、範圍 API key、AES-256-GCM 憑證加密；README 自述僅建議內網部署 | WeKnora OSS 企業功能最完整；但官方未宣稱可直接對外 |
+| 安全注意 | — | — | Skills 沙箱需掛載 `/var/run/docker.sock`（維護者自述等同 host root，僅限單機私有部署）；技能市集 / Chrome 擴充需外網 | **K8s 共享叢集必須停用 Skills 沙箱或改接 gVisor Job**；離線環境需關閉市集 |
+| 成熟度風險 | 穩定、迭代快 | v1.0.0 **剛釋出**（架構重寫），舊教學失效 | v0.9.0，**2–3 週一版**，PR 超過 5,000；尚未 1.0，功能擴張快（RAG → Agent → Wiki → Skills → 記憶） | WeKnora 變動速度最快，升級需跟緊 changelog |
+| 文件 / 語言 | 英文 | 中英 | **文件站以中文為主**，README 多語；預設時區 Asia/Shanghai、預設語言 zh-CN | 對中文團隊友善；英文團隊依賴 README/CHANGELOG |
+| 中文處理 | 一般 | ✅ 強 | ✅ 強（微信對話開放平台同源） | URD 以中文為主時 RAGFlow / WeKnora 加分 |
 
-**結論**：維持 **Onyx 為 PM 互動入口與全廠 MCP 知識伺服器**（K8s 官方 Helm、雙向 MCP、Assistants UX 貼合 PM 使用情境）。**RAGFlow 列為「文件解析引擎」備選 / 補充**：若 Phase 1 PoC 發現 Onyx 對掃描 PDF、複雜表格、中文舊規格的解析品質不足，可以 RAGFlow 作為前處理層（DeepDoc 解析 → 匯出分塊 → 寫入共享 Qdrant）或獨立知識庫，並透過其 MCP Server 接入協調器。導入前提：自建 Helm chart、確認 ADO 連接器涵蓋 Wiki、等待 v1.0.x 穩定。
+**結論**：維持 **Onyx 為 PM 互動入口與全廠 MCP 知識伺服器**（官方 Helm、雙向 MCP、企業搜尋 UX 貼合 PM 情境、運維面最小）。
 
+- **RAGFlow** 列為「文件解析引擎」備選：掃描 PDF、複雜表格、中文舊規格解析品質不足時，作為前處理層（DeepDoc → 分塊 → 共享 Qdrant）或獨立知識庫。前提：自建 Helm、確認 ADO 連接器涵蓋 Wiki、等待 v1.0.x 穩定。
+- **WeKnora** 列為「一體化平台」備選：若團隊希望以**單一系統**同時取得 Onyx（對話 + MCP）、Dify（Agent 工作流）與部分 Docmost（自動 Wiki）的角色，且 OSS 即需 OIDC / RBAC / 稽核，WeKnora 是最接近的選項，並有官方 Helm。代價是功能面過廣、中文為主文件、docker.sock 沙箱不可用於共享叢集、無 ADO/SharePoint 連接器、尚未 1.0。建議 Phase 1 PoC 與 Onyx 並列評估 PM 體驗，而非直接替換。
 **PM 需求分析工作流（以 Onyx 為中心）**
 
 ```
@@ -364,7 +370,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 | **Wiki / URD** | Azure DevOps Wiki | + Docmost（PM 需要更好 UX 與簽核流程時；無官方 Helm，自寫 manifests） |
 | **Spec 格式** | OpenSpec（Stores 模式獨立 Spec Repo） | GitHub Spec Kit |
 | **需求轉換** | 自建 Agent（參考 awesome-copilot `breakdown-feature-prd`）：Wiki → OpenSpec → Boards | BMAD-Method 人格 |
-| **PM AI 互動入口 + RAG** | **Onyx**（官方 Helm；Assistants 載入 BMAD PM 人格 / PRD skill；同時是全廠知識 MCP Server）+ Qdrant（官方 Helm）/pgvector | **RAGFlow**（文件解析前處理層：掃描 PDF / 複雜表格 / 中文舊規格；需自建 Helm）；Dify（複雜多步驟訪談流程）；LlamaIndex 自訂管線 |
+| **PM AI 互動入口 + RAG** | **Onyx**（官方 Helm；Assistants 載入 BMAD PM 人格 / PRD skill；同時是全廠知識 MCP Server）+ Qdrant（官方 Helm）/pgvector | **RAGFlow**（文件解析前處理層：掃描 PDF / 複雜表格 / 中文舊規格；需自建 Helm）；**WeKnora**（一體化 RAG+Agent+Wiki 平台，官方 Helm、OSS 含 OIDC/RBAC；需停用 docker.sock 沙箱）；Dify（複雜多步驟訪談流程）；LlamaIndex 自訂管線 |
 | **會議轉錄** | whisper-asr-webservice（WhisperX 引擎，K8s 服務） | Speaches（OpenAI 相容 API） |
 | **Coding Agent 池** | Goose（通用/MCP 工具密集）· Qwen Code（複雜多步驟）· Aider（精準實作/測試撰寫）— 皆以 K8s Job 執行 | OpenHands Agent Server（官方 Helm）作執行層；Cline / Continue 備選 |
 | **Skill Library** | 單一 `skills-library` Repo（SKILL.md）→ CI 投影到各 Agent 格式 | 種子：anthropics/skills、awesome-copilot（僅格式/內容參考） |
@@ -402,7 +408,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 - 部署 **Onyx（官方 Helm）+ Qdrant**（接本地 vLLM），接入 Wiki / Spec Store / 既有文件
 - 建立 Onyx Assistants：「需求分析師」（BMAD PM 人格 + PRD skill 結構）、「驗收條件撰寫」；選 1–2 位 PM 試用並迭代 Prompt
 - 驗證 Onyx 作為 MCP Server 供 Agent 查詢；驗證 Onyx 對 ADO Wiki 的索引方式
-- 以同一批舊 URD / 掃描 PDF 樣本對比 Onyx 與 RAGFlow（DeepDoc）解析與檢索品質，決定是否導入 RAGFlow 作前處理層
+- 以同一批舊 URD / 掃描 PDF 樣本對比 Onyx、RAGFlow（DeepDoc）、WeKnora 的解析與檢索品質；並以 PM 實際訪談流程對比 Onyx Assistants 與 WeKnora Agent 模式的使用體驗，決定是否導入 RAGFlow 作前處理層或以 WeKnora 補足 Agent / 自動 Wiki 角色
 - 建置**需求轉換 Agent** PoC：Wiki URD → OpenSpec → Boards Work Items（含回寫連結）
 - （選配）whisper-asr-webservice 會議轉錄 → Onyx Assistant → URD 草稿管線
 
