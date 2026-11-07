@@ -2,6 +2,8 @@
 
 All findings below are from direct fetches of official repos/docs (citations inline). Verdicts: ✅ K8s-native · 🟡 Runs on K8s with caveats · ❌ Not suitable for K8s.
 
+> **更新（決策）**：公司採用 **Azure DevOps Services**（雲端 SaaS，唯一允許的雲端服務），因此下方 Azure DevOps Server 的 Windows VM 結論已不適用；僅保留 Azure Pipelines self-hosted agent（Linux 容器 + KEDA `azure-pipelines` scaler）在叢集內的部署模式，並需開通叢集出站白名單至 `dev.azure.com`。
+
 ## Summary Table
 
 | Tool | Official K8s support | Special node needs | Stateful deps | Caveats | Verdict |

@@ -12,7 +12,7 @@
 | 前提 | 決定 | 影響 |
 |---|---|---|
 | Coding Agent 生態 | **框架中立**，Copilot 只是其中之一 | 需以 MCP / Agent Skills / AGENTS.md 等開放標準作為整合層 |
-| 部署 | **完全地端，Kubernetes 叢集為主**，資料不出內網，**不使用任何雲端協調器 / 雲端 Agent 服務** | 所有協調器、Agent、知識庫、測試工具必須可在內網 K8s 自建（Azure DevOps Server 為叢集外 Windows VM）；LLM 以 GPU 節點池上的 vLLM 為主（Azure OpenAI Private Endpoint 僅在資安核可後作為選配） |
+| 部署 | **地端 Kubernetes 叢集為主**，**唯一允許的雲端服務為 Azure DevOps Services**；不使用任何其他雲端協調器 / 雲端 Agent / 雲端 LLM | 所有協調器、Agent、知識庫、測試工具必須可在內網 K8s 自建；叢集出網僅白名單 `dev.azure.com` / `*.visualstudio.com`；LLM 以 GPU 節點池上的 vLLM 為主（Azure OpenAI Private Endpoint 僅在資安核可後作為選配） |
 | 原始碼與 CI/CD | **Azure DevOps** | 所有工具須驗證對 Azure Repos PR / Boards / Pipelines 的支援 |
 | 文件深度 | 架構 + 工具比較 + 建議組合 + 導入階段 | 本文件 |
 
@@ -33,7 +33,7 @@
 | 雲端協調器 / Agent 平台 | GitHub Copilot coding agent、Cognition Devin、Factory.ai Droids、Amazon Kiro、Google Jules / Antigravity、Azure AI Foundry Agent Service、Atlassian Rovo、Sourcegraph Amp |
 | 雲端 Coding Agent / IDE | Cursor（CLI/Cloud Agent）、Windsurf、Gemini CLI、GitHub Copilot CLI、Claude Code（模型僅雲端）、OpenAI Codex CLI（模型僅雲端）、JetBrains Junie（產品層雲端） |
 | 雲端測試 / Review | CodeRabbit、Sourcery、Ellipsis、Greptile、Graphite Diamond、Bito、Snyk、Postman AI、Testsigma / Mabl / testRigor / Functionize / Checksum / Octomind、Stagehand Model Gateway、Keploy AI 擴充（綁 Keploy Cloud） |
-| 雲端知識庫 / 託管 | Confluence Cloud、Notion、Azure AI Search（Azure 託管）、Azure DevOps MCP **Remote** 模式（微軟託管）、Langfuse Cloud、LangSmith |
+| 雲端知識庫 / 託管 | Confluence Cloud、Notion、Azure AI Search（Azure 託管）、Langfuse Cloud、LangSmith。Azure DevOps MCP **Remote** 模式（`mcp.dev.azure.com`，屬 ADO 服務範圍）→ 需資安確認後方可用，預設採 Local stdio |
 | 沙箱 | E2B（雲端）、Daytona（OSS 停止維護） |
 
 ---
@@ -93,8 +93,11 @@ flowchart TB
         end
     end
 
-    subgraph External["🖥️ 叢集外（Windows / 實體裝置）"]
-        ADO[Azure DevOps Server<br/>Windows Server VM + SQL Server<br/>Boards · Repos · Pipelines · Wiki · Test Plans]
+    subgraph Cloud["☁️ Azure DevOps Services（唯一允許的雲端）"]
+        ADO[Boards · Repos · Pipelines<br/>Wiki · Test Plans<br/>dev.azure.com]
+    end
+
+    subgraph External["🖥️ 叢集外（實體裝置）"]
         Devices[行動裝置農場<br/>網路 ADB · Maestro]
     end
 
@@ -108,7 +111,7 @@ flowchart TB
     Spec --> Onyx
     Skills -.投影.-> CodeAgents & TestAgents
 
-    ADO -->|Webhook / 輪詢| MAF
+    ADO -->|REST 輪詢 / Pipeline 觸發<br/>（叢集無公開入口）| MAF
     MAF <--> Temporal
     MAF --> A2A --> ArchAgent & CodeAgents & TestAgents & ReviewAgent
     Onyx -.MCP.-> Agents
@@ -134,7 +137,7 @@ flowchart TB
 | **協調器層** | SDLC 狀態機、派工、人工審核閘門、重試、稽核 | 協調邏輯與 Agent 實作解耦；用 A2A/MCP 呼叫 Agent，不綁定特定框架 |
 | **Agent 池** | 各階段專責 Agent，可替換 | 同一份 Skills 投影到不同 Agent；Agent 產出必須是 Git diff / PR / 測試報告等可驗證產物 |
 | **基礎設施** | LLM 閘道、沙箱、觀測 | 所有 LLM 呼叫經單一閘道（路由/成本/稽核）；模型全部跑在內網 GPU 節點池；每個任務在 gVisor/Kata 沙箱節點池執行 |
-| **Azure DevOps Server** | 系統記錄 (System of Record)，**叢集外 Windows VM** | 透過官方 MCP Server（stdio，以 sidecar 橋接）；Remote 模式為微軟託管，排除 |
+| **Azure DevOps Services** | 系統記錄 (System of Record)，**唯一雲端元件** | 叢集只做出站連線（HTTPS 白名單）；透過官方 MCP Server（stdio，以 sidecar 橋接）；叢集無公開入口 → 不用 Service Hooks，改 REST 輪詢或由 Pipeline（self-hosted agent）觸發 |
 
 ### Kubernetes 部署視圖
 
@@ -142,12 +145,13 @@ flowchart TB
 
 | 區塊 | 部署方式 | 備註 |
 |---|---|---|
-| **叢集外** | Azure DevOps Server（Windows Server + SQL Server VM）；行動裝置農場 | ADO Server 官方不支援 Linux/K8s；Android 模擬器需 `/dev/kvm`，不進共享叢集 |
+| **雲端（唯一）** | Azure DevOps Services | 叢集出站白名單 `dev.azure.com`、`*.dev.azure.com`、`*.visualstudio.com`、`*.vsassets.io`；叢集內無公開入口，雲端→叢集一律用出站輪詢或 Pipeline agent 拉取 |
+| **叢集外** | 行動裝置農場 | Android 模擬器需 `/dev/kvm`，不進共享叢集 |
 | **GPU 節點池** | NVIDIA GPU Operator；vLLM `production-stack` Helm（官方）；LiteLLM 官方 Helm | 離線環境需預先鏡像 driver container；Ollama 僅社群 chart，限開發機 |
 | **沙箱節點池** | gVisor RuntimeClass（預設）/ Kata（需 VM 級隔離時）；OpenHands Agent Server（官方 Helm，無需 Docker socket） | Coding/Test Agent 以 Job 執行，不給 privileged |
 | **ns-platform** | Onyx 官方 Helm（含 OpenSearch/SeaweedFS）；Qdrant 官方 Helm（標註非 production-ready，需自管備份）；Docmost **無官方 chart**（自寫 manifests） | |
 | **ns-orchestrator** | Temporal 官方 Helm（僅 server 層，DB 自管）；MAF/LangGraph 自行容器化 | LangGraph **Platform** 自建需 Enterprise 授權且回連 LangChain → 只用 OSS library |
-| **ns-agents** | Goose/Aider 官方映像作 Job；Qwen Code 自建映像（有 `qwen serve` daemon）；PR-Agent 以 webhook server Deployment；ADO MCP stdio + `mcp-proxy`/`supergateway` sidecar | |
+| **ns-agents** | Goose/Aider 官方映像作 Job；Qwen Code 自建映像（有 `qwen serve` daemon）；PR-Agent 以 Pipeline 步驟（Build Validation）執行，不開 webhook 入口；ADO MCP stdio + `mcp-proxy`/`supergateway` sidecar | |
 | **測試/安全** | k6-operator（官方，避免 PrivateLoadZone）；trivy-operator（官方）；SonarQube 官方 Helm（關閉 privileged init，改節點層 sysctl）；ZAP/Nuclei/Schemathesis 作 Job；browser-use/Playwright MCP 容器內 `--no-sandbox` | **Keploy** OSS 需 root/eBPF，K8s 原生模式為商業+雲端 → 降為選配、隔離 VM |
 | **ns-observability / data** | Phoenix Helm；ReportPortal 官方 Helm；CloudNativePG + Redis Operator + S3 相容儲存**集中共用** | Allure 僅社群 `allure-docker-service` |
 | **CI Agent** | Azure Pipelines agent `--once` 容器 + KEDA `azure-pipelines` scaler | |
@@ -208,7 +212,7 @@ flowchart TB
 | Confluence Data Center | 商業（地端版） | ❌ XHTML | **DC 無官方 MCP** | 🟡 UX 最佳但 Jira 中心、AI 整合缺口 |
 | AFFiNE / AppFlowy | 混合 | ❌ | 社群 | ❌ 偏白板/筆記，不適合正式規格 |
 
-> Azure DevOps Wiki 以 **Azure DevOps Server（地端版）** 為前提；若目前是 Azure DevOps Services（雲端），需納入遷移評估。
+> Azure DevOps Wiki 為 **Azure DevOps Services**（雲端，唯一允許）；Onyx 透過 ADO REST API 出站索引 Wiki 內容，索引副本留在內網。
 
 **Spec-driven 工具（URD → Agent 可消費規格）**
 
@@ -251,7 +255,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 - **Onyx 連接器**：Web/檔案連接器索引 ADO Wiki（Onyx 無原生 ADO 連接器）；Confluence DC 連接器若有舊文件；Git 連接器索引 OpenSpec Store。
 - **Onyx 作為 MCP Server**：下游 Coding/Test Agent 也用同一個知識入口查需求與設計脈絡，避免兩套知識庫。
 - **會議 → 需求**：**whisper-asr-webservice**（MIT，K8s 服務，`ASR_ENGINE=whisperx` 含講者分離，CPU/GPU 映像）或 **Speaches**（OpenAI 相容 API）→ 轉錄稿貼入 Onyx Assistant 產紀要與 URD 草稿。Meetily 為桌面 app 不進 K8s；開源 PRD 產生器皆 <70★，**不採用為基礎設施**，僅作 prompt 參考。
-- **待驗證**：Onyx Assistants 的工具呼叫（MCP action）成熟度、檔案連接器對 ADO Server Wiki 的認證方式、EE 功能邊界（RBAC/稽核）。
+- **待驗證**：Onyx Assistants 的工具呼叫（MCP action）成熟度、對 ADO Services Wiki 的索引方式（REST API + PAT/Entra 服務主體）、EE 功能邊界（RBAC/稽核）。
 
 ### 3.3 Coding Agent 與 Skill 生態
 
@@ -321,7 +325,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 | **SonarQube** | Community OSS / Developer+ 商業 | ✅ | N/A | ✅ 但 **PR 裝飾需 Developer+** | ✅ SAST/品質閘門 |
 | **Trivy** | Apache | ✅ | N/A | 通用 CLI 步驟 | ✅ 容器/IaC/密鑰掃描 |
 | Semgrep CLI | OSS core | ✅ CLI | N/A | 🟡 PR 留言矩陣只列 GitHub/GitLab | 🟡 當通用 CI 步驟 |
-| CodeQL | GHAS 授權 | 法律限制 | — | 🟡 Azure DevOps Server 版支援未確認 | 🟡 |
+| CodeQL | GHAS 授權 | — | — | 🟡 可經 **GitHub Advanced Security for Azure DevOps**（付費附加，屬 ADO Services 範圍） | 🟡 需確認授權與資安立場 |
 | CodeRabbit / Sourcery / Bito / Ellipsis / Greptile / Graphite / GitLab Duo | SaaS | — | — | — | ❌ 雲端或不支援 ADO，**已排除** |
 
 **效能/安全**：k6（AGPL，需法務注意）+ Locust（MIT）；OWASP ZAP Automation Framework（Apache，exit code 閘門）+ Nuclei（MIT）+ Trivy；PentestGPT / HexStrike（MIT，支援 Ollama）僅作**人工監督的週期性輔助**，非 CI 閘門。
@@ -338,7 +342,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 |---|---|---|
 | **協調器** | Microsoft Agent Framework + Temporal（官方 Helm，DB 自管） | LangGraph OSS library + CrewAI（**不用** LangGraph Platform：需 Enterprise 授權且回連雲端） |
 | **互通協定** | MCP（工具）+ A2A（Agent 間）+ Agent Skills（知識） | — |
-| **ADO 整合** | Azure DevOps **Server**（叢集外 Windows VM）+ microsoft/azure-devops-mcp（stdio，`mcp-proxy` sidecar 橋接）+ ADO REST/Python SDK | — |
+| **ADO 整合** | Azure DevOps **Services**（唯一雲端）+ microsoft/azure-devops-mcp（stdio Local 模式，`mcp-proxy` sidecar 橋接）+ ADO REST/Python SDK；雲端→叢集以輪詢 / Pipeline agent 拉取 | ADO MCP Remote 模式（資安核可後） |
 | **Wiki / URD** | Azure DevOps Wiki | + Docmost（PM 需要更好 UX 與簽核流程時；無官方 Helm，自寫 manifests） |
 | **Spec 格式** | OpenSpec（Stores 模式獨立 Spec Repo） | GitHub Spec Kit |
 | **需求轉換** | 自建 Agent（參考 awesome-copilot `breakdown-feature-prd`）：Wiki → OpenSpec → Boards | BMAD-Method 人格 |
@@ -352,7 +356,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 | **單元測試** | Aider 迴圈 + Stryker/PIT/mutmut 變異閘門 | Diffblue（Java，商業可離線） |
 | **API 測試** | Schemathesis（Job） | RESTler / EvoMaster；Keploy（選配，隔離 VM） |
 | **E2E** | browser-use + Playwright MCP / Midscene.js（Web，叢集內）；Maestro（Mobile，**叢集外裝置農場**） | Stagehand |
-| **Review 閘門** | PR-Agent（webhook Deployment）+ SonarQube（官方 Helm）+ trivy-operator | Semgrep CLI（通用 CI 步驟） |
+| **Review 閘門** | PR-Agent（Azure Pipelines 步驟，Build Validation 政策觸發）+ SonarQube（官方 Helm）+ trivy-operator | Semgrep CLI（通用 CI 步驟）；GHAzDO CodeQL（付費） |
 | **效能/安全** | k6-operator（官方）/ Locust（社群 operator）；ZAP + Nuclei Job + Trivy | PentestGPT（人工監督） |
 | **測試管理** | Azure Test Plans + Allure + ReportPortal（官方 Helm） | Doorstop/StrictDoc + sphinx-needs |
 | **觀測/評測** | Phoenix + OTel GenAI；Promptfoo + DeepEval；內部 SWE-bench 式評測集 | Langfuse（需 EE 功能時） |
@@ -370,8 +374,9 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 - **共用資料層**：CloudNativePG、Redis Operator、S3 相容物件儲存（供 LiteLLM / Onyx / Temporal / ReportPortal 等共用）
 - 建立 LLM 閘道（LiteLLM Helm）+ vLLM production-stack；所有後續工具只經閘道，**出網 LLM 流量以 NetworkPolicy 預設封鎖**
 - 部署 Phoenix + OTel collector（從第一天就有可觀測性）
-- Azure DevOps Server（叢集外 Windows VM）確認版本；叢集內 Azure Pipelines agent `--once` + KEDA scaler
-- 部署 Azure DevOps MCP Server（stdio + `mcp-proxy` sidecar）並驗證 Boards/Repos/Pipelines/Wiki 讀寫
+- 確認 Azure DevOps Services 組織、PAT / Entra 服務主體權限；開通叢集出站白名單（`dev.azure.com`、`*.dev.azure.com`、`*.visualstudio.com`、`*.vsassets.io`）
+- 叢集內 Azure Pipelines self-hosted agent `--once` + KEDA `azure-pipelines` scaler（出站長輪詢，不需公開入口）
+- 部署 Azure DevOps MCP Server（stdio Local 模式 + `mcp-proxy` sidecar）並驗證 Boards/Repos/Pipelines/Wiki 讀寫；Remote 模式送資安評估
 
 ### Phase 1 — 知識庫與 Spec 管線（PM 先受益）
 - 決定 Wiki：先用 ADO Wiki；PoC Docmost 評估簽核流程（需自寫 K8s manifests）
@@ -387,7 +392,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 - 建置 Agent 容器映像（Goose/Aider 官方；Qwen Code 自建）並以 Job 在沙箱節點池執行
 - 評測三個候選 Agent（Goose / Qwen Code / Aider）× 2–3 個本地模型在同一組內部工單上的表現 → 建立內部 SWE-bench 式評測集
 - Pipeline 範本：checkout → Agent Job（gVisor）→ `az repos pr create`
-- 部署 PR-Agent（webhook Deployment）+ SonarQube（Helm）+ trivy-operator 作 PR 閘門（Build Validation 政策）
+- 部署 PR-Agent（Azure Pipelines 步驟）+ SonarQube（Helm）+ trivy-operator 作 PR 閘門（Build Validation 政策；Azure Repos 不支援 YAML `pr:` 觸發）
 
 ### Phase 3 — 測試 Agent 池
 - 單元測試：Aider 生成迴圈 + 變異測試閘門（先選一種語言）
@@ -418,7 +423,8 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 | 開源模型授權 | Qwen/DeepSeek/GLM 等商用條款各異 | 法務確認每個權重的授權 |
 | ADO 無結構化需求格式 | 架構最大缺口 | Phase 1 需求轉換 Agent 是關鍵交付 |
 | Azure Repos 不支援 YAML `pr:` 觸發 | 影響所有 PR 閘門工具 | 使用 Build Validation 分支政策 |
-| Azure DevOps 部署型態 | 本計畫假設 Azure DevOps **Server**（地端） | 若現況為 Services（雲端），需釐清是否在「不可用雲端」範圍 |
+| 雲端→叢集單向連線 | Azure DevOps Services 在雲端，叢集無公開入口，Service Hooks 無法推送 | 一律採出站：REST 輪詢（ADO API 速率限制需節流）、Pipelines agent 長輪詢、KEDA scaler；出站白名單需隨 ADO 網域變動維護 |
+| 程式碼與需求存放於雲端 | Azure Repos / Wiki / Boards 資料位於微軟雲端 | 已為公司接受的既有現況；敏感資料分類與 PAT 最小權限、Entra 條件式存取、稽核日誌 |
 | **K8s 有狀態服務自管** | Qdrant、Temporal 官方 chart 皆註明資料層/備份需自行負責 | 以 CloudNativePG + 物件儲存集中管理；排程備份演練 |
 | **沙箱 RuntimeClass 相容性** | gVisor 不支援所有 syscall；部分語言工具鏈/測試框架可能失敗 | Phase 2 以實際 Agent 工作負載驗證；必要時改 Kata |
 | **Docmost / Qwen Code 無官方 K8s 打包** | 需自寫 manifests / Dockerfile 並自行追版本 | 納入 Phase 1/2 工作量；或改用有官方 chart 的替代 |
