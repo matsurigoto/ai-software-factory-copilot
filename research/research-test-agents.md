@@ -1,4 +1,7 @@
-﻿# AI Software Factory — Test & Review Agent Pool Research Report
+# AI Software Factory — Test & Review Agent Pool Research Report
+
+> **最終決策備註（2026-11-07）**：本報告為原始調研紀錄，撰寫時以「Azure OpenAI Private Endpoint 或本地模型」與「Azure DevOps Server 地端」為假設前提。後續規劃已定案為：**完全地端 Kubernetes**、**唯一允許的雲端服務為 Azure DevOps Services**、**不使用任何雲端 LLM**（含 Azure OpenAI），模型一律為叢集內 vLLM 或公司內部 endpoint，經 LiteLLM Proxy 路由。閱讀時請以 `AI-Software-Factory-Plan.md` 為準，本文中的 Azure OpenAI / ADO Server 相關內容僅供參考。
+
 **Self-hosted, framework-neutral, Azure DevOps–based environment | Azure OpenAI private endpoint or local Ollama/vLLM**
 *Research compiled 2026-11-07. All claims cite primary sources (GitHub repos, official docs, vendor pages). Where a claim could not be verified, it is explicitly flagged as a gap.*
 
