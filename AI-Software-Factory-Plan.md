@@ -12,7 +12,7 @@
 | 前提 | 決定 | 影響 |
 |---|---|---|
 | Coding Agent 生態 | **框架中立**，Copilot 只是其中之一 | 需以 MCP / Agent Skills / AGENTS.md 等開放標準作為整合層 |
-| 部署 | **地端 Kubernetes 叢集為主**，**唯一允許的雲端服務為 Azure DevOps Services**；不使用任何其他雲端協調器 / 雲端 Agent / 雲端 LLM | 所有協調器、Agent、知識庫、測試工具必須可在內網 K8s 自建；叢集出網僅白名單 `dev.azure.com` / `*.visualstudio.com`；LLM 以 GPU 節點池上的 vLLM 為主（Azure OpenAI Private Endpoint 僅在資安核可後作為選配） |
+| 部署 | **地端 Kubernetes 叢集為主**，**唯一允許的雲端服務為 Azure DevOps Services**；不使用任何其他雲端協調器 / 雲端 Agent / 雲端 LLM | 所有協調器、Agent、知識庫、測試工具必須可在內網 K8s 自建；叢集出網僅白名單 `dev.azure.com` / `*.visualstudio.com`；LLM 以 GPU 節點池上的 vLLM 為主，並可接入公司既有內部模型 endpoint（經 LiteLLM Proxy 統一路由）；不使用任何雲端 LLM |
 | 原始碼與 CI/CD | **Azure DevOps** | 所有工具須驗證對 Azure Repos PR / Boards / Pipelines 的支援 |
 | 文件深度 | 架構 + 工具比較 + 建議組合 + 導入階段 | 本文件 |
 
@@ -22,7 +22,7 @@
 2. **Azure DevOps Wiki + Boards 沒有「結構化、Agent 可消費」的需求格式** — 沒有 Requirement 工作項、沒有追溯矩陣，Wiki 與 Work Item 之間無結構化連結。這是協調器必須補上的最大缺口。
 3. 14 個 AI Code Review 工具中**僅 2 個可地端自建且有文件化的 Azure Repos PR 支援**：Qodo Merge/PR-Agent（OSS）、SonarQube（Developer+ 才有 PR 裝飾）。
 4. 已過時/應排除：**AutoGen 已封存**（→ Microsoft Agent Framework）、**GPT-Pilot 有供應鏈惡意程式事件**、**Flowise 疑似封存**、**Qodo Cover 已封存**、**Daytona OSS 已停止維護**、Microsoft GraphRAG 維護模式、Devika 實驗階段。
-5. **Claude Code 無法地端化** — 其模型只能呼叫 Anthropic / Bedrock / Vertex 雲端 API，無 Azure OpenAI 或本地模型路徑，因此**不列入 Agent 池**。
+5. **Claude Code 無法地端化** — 其模型只能呼叫 Anthropic / Bedrock / Vertex 雲端 API，無本地模型或自訂 OpenAI 相容 endpoint 路徑，因此**不列入 Agent 池**。
 
 ### 已排除的雲端方案（備查）
 
@@ -351,7 +351,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 | **Coding Agent 池** | Goose（通用/MCP 工具密集）· Qwen Code（複雜多步驟）· Aider（精準實作/測試撰寫）— 皆以 K8s Job 執行 | OpenHands Agent Server（官方 Helm）作執行層；Cline / Continue 備選 |
 | **Skill Library** | 單一 `skills-library` Repo（SKILL.md）→ CI 投影到各 Agent 格式 | 種子：anthropics/skills、awesome-copilot（僅格式/內容參考） |
 | **LLM 閘道** | LiteLLM Proxy（官方 Helm） | — |
-| **模型** | GPU 節點池（NVIDIA GPU Operator）：vLLM production-stack（官方 Helm）；開源權重如 Qwen3-Coder / DeepSeek-Coder / GLM；視覺任務用 Qwen-VL；Ollama 僅開發機 | （僅在資安明確核可時）Azure OpenAI Private Endpoint |
+| **模型** | GPU 節點池（NVIDIA GPU Operator）：vLLM production-stack（官方 Helm）；開源權重如 Qwen3-Coder / DeepSeek-Coder / GLM；視覺任務用 Qwen-VL；Ollama 僅開發機 | 公司既有內部模型 endpoint（OpenAI 相容，經 LiteLLM Proxy 路由） |
 | **沙箱** | 沙箱節點池：gVisor RuntimeClass（預設）/ Kata（VM 級隔離） | OpenHands Runtime；Sysbox（需 DinD 時） |
 | **單元測試** | Aider 迴圈 + Stryker/PIT/mutmut 變異閘門 | Diffblue（Java，商業可離線） |
 | **API 測試** | Schemathesis（Job） | RESTler / EvoMaster；Keploy（選配，隔離 VM） |
