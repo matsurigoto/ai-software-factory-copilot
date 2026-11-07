@@ -52,8 +52,8 @@ flowchart TB
         direction TB
 
         subgraph KB["📚 知識庫層 · ns-platform"]
-            Onyx[Onyx Assistants<br/>PM 需求分析對話入口<br/>企業搜尋 / 全廠 MCP Server]
-            Qdrant[(Qdrant / pgvector)]
+            Onyx[Onyx Assistants<br/>PM 需求分析對話入口<br/>企業搜尋 / 全廠 MCP Server<br/>內含 OpenSearch 索引]
+            Qdrant[(Qdrant / pgvector<br/>共享向量庫 · Agent 自訂管線)]
             Docmost[Docmost（選配）<br/>URD 簽核]
             Spec[Spec Store<br/>OpenSpec · Azure Repos]
             Skills[Skills Library<br/>SKILL.md · Azure Repos]
@@ -103,7 +103,7 @@ flowchart TB
 
     ASR -.紀要.-> Onyx
     PM <-->|對話產出 URD| Onyx
-    Onyx --> Qdrant
+    ReqAgent & ArchAgent --> Qdrant
     Onyx --> Docmost
     Onyx -.索引.-> ADO
     Docmost --> ReqAgent --> Spec
@@ -149,7 +149,7 @@ flowchart TB
 | **叢集外** | 行動裝置農場 | Android 模擬器需 `/dev/kvm`，不進共享叢集 |
 | **GPU 節點池** | NVIDIA GPU Operator；vLLM `production-stack` Helm（官方）；LiteLLM 官方 Helm | 離線環境需預先鏡像 driver container；Ollama 僅社群 chart，限開發機 |
 | **沙箱節點池** | gVisor RuntimeClass（預設）/ Kata（需 VM 級隔離時）；OpenHands Agent Server（官方 Helm，無需 Docker socket） | Coding/Test Agent 以 Job 執行，不給 privileged |
-| **ns-platform** | Onyx 官方 Helm（含 OpenSearch/SeaweedFS）；Qdrant 官方 Helm（標註非 production-ready，需自管備份）；Docmost **無官方 chart**（自寫 manifests） | |
+| **ns-platform** | Onyx 官方 Helm（含 OpenSearch 索引 / SeaweedFS；Onyx 不外接 Qdrant）；Qdrant 官方 Helm 作 Agent 自訂管線的共享向量庫（標註非 production-ready，需自管備份；Phase 2 再部署）；Docmost **無官方 chart**（自寫 manifests） | |
 | **ns-orchestrator** | Temporal 官方 Helm（僅 server 層，DB 自管）；MAF/LangGraph 自行容器化 | LangGraph **Platform** 自建需 Enterprise 授權且回連 LangChain → 只用 OSS library |
 | **ns-agents** | Goose/Aider 官方映像作 Job；Qwen Code 自建映像（有 `qwen serve` daemon）；PR-Agent 以 Pipeline 步驟（Build Validation）執行，不開 webhook 入口；ADO MCP stdio + `mcp-proxy`/`supergateway` sidecar | |
 | **測試/安全** | k6-operator（官方，避免 PrivateLoadZone）；trivy-operator（官方）；SonarQube 官方 Helm（關閉 privileged init，改節點層 sysctl）；ZAP/Nuclei/Schemathesis 作 Job；browser-use/Playwright MCP 容器內 `--no-sandbox` | **Keploy** OSS 需 root/eBPF，K8s 原生模式為商業+雲端 → 降為選配、隔離 VM |
@@ -237,7 +237,7 @@ flowchart TB
 | Open WebUI | 自訂授權 / 158k | 間接 | 🟡 當聊天前端，非連接器層 |
 | LightRAG | MIT / 41k | 社群 | 🟡 輕量 Graph-RAG 引擎，需膠水 |
 | Microsoft GraphRAG | MIT | — | ❌ 維護模式 |
-| **向量庫** | | | **Qdrant**（Apache，效能/過濾強）或 **pgvector**（已有 Postgres 時最低維運） |
+| **向量庫** | | | Onyx 自帶索引（Vespa → 建議改 OpenSearch），**不需另配**；Agent 自訂管線（OpenSpec 語意比對、記憶、RAGFlow 前處理輸出）另用 **Qdrant**（Apache，效能/過濾強）或 **pgvector**（已有 CloudNativePG 時最低維運） |
 
 **Onyx vs RAGFlow vs WeKnora 深入比較**（RAGFlow 依 v1.0.0，2026-11-06 釋出，Python→Go 重寫；WeKnora 依 v0.9.0，2026-10-29）
 
@@ -370,7 +370,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 | **Wiki / URD** | Azure DevOps Wiki | + Docmost（PM 需要更好 UX 與簽核流程時；無官方 Helm，自寫 manifests） |
 | **Spec 格式** | OpenSpec（Stores 模式獨立 Spec Repo） | GitHub Spec Kit |
 | **需求轉換** | 自建 Agent（參考 awesome-copilot `breakdown-feature-prd`）：Wiki → OpenSpec → Boards | BMAD-Method 人格 |
-| **PM AI 互動入口 + RAG** | **Onyx**（官方 Helm；Assistants 載入 BMAD PM 人格 / PRD skill；同時是全廠知識 MCP Server）+ Qdrant（官方 Helm）/pgvector | **RAGFlow**（文件解析前處理層：掃描 PDF / 複雜表格 / 中文舊規格；需自建 Helm）；**WeKnora**（一體化 RAG+Agent+Wiki 平台，官方 Helm、OSS 含 OIDC/RBAC；需停用 docker.sock 沙箱）；Dify（複雜多步驟訪談流程）；LlamaIndex 自訂管線 |
+| **PM AI 互動入口 + RAG** | **Onyx**（官方 Helm，索引層採 OpenSearch；Assistants 載入 BMAD PM 人格 / PRD skill；同時是全廠知識 MCP Server）；Agent 自訂管線共享向量庫：Qdrant（官方 Helm）或 pgvector | **RAGFlow**（文件解析前處理層：掃描 PDF / 複雜表格 / 中文舊規格；需自建 Helm）；**WeKnora**（一體化 RAG+Agent+Wiki 平台，官方 Helm、OSS 含 OIDC/RBAC；需停用 docker.sock 沙箱）；Dify（複雜多步驟訪談流程）；LlamaIndex 自訂管線 |
 | **會議轉錄** | whisper-asr-webservice（WhisperX 引擎，K8s 服務） | Speaches（OpenAI 相容 API） |
 | **Coding Agent 池** | Goose（通用/MCP 工具密集）· Qwen Code（複雜多步驟）· Aider（精準實作/測試撰寫）— 皆以 K8s Job 執行 | OpenHands Agent Server（官方 Helm）作執行層；Cline / Continue 備選 |
 | **Skill Library** | 單一 `skills-library` Repo（SKILL.md）→ CI 投影到各 Agent 格式 | 種子：anthropics/skills、awesome-copilot（僅格式/內容參考） |
@@ -405,7 +405,7 @@ PM ◀──對話──▶ Onyx Assistant「需求分析師」 ──▶ URD �
 ### Phase 1 — 知識庫與 Spec 管線（PM 先受益）
 - 決定 Wiki：先用 ADO Wiki；PoC Docmost 評估簽核流程（需自寫 K8s manifests）
 - 建立 OpenSpec Store Repo + URD 範本（引用 awesome-copilot PRD skill 架構）
-- 部署 **Onyx（官方 Helm）+ Qdrant**（接本地 vLLM），接入 Wiki / Spec Store / 既有文件
+- 部署 **Onyx（官方 Helm，OpenSearch 索引）**（接本地 vLLM），接入 Wiki / Spec Store / 既有文件；Qdrant / pgvector 延至 Phase 2 需求轉換 Agent 自訂管線時再部署
 - 建立 Onyx Assistants：「需求分析師」（BMAD PM 人格 + PRD skill 結構）、「驗收條件撰寫」；選 1–2 位 PM 試用並迭代 Prompt
 - 驗證 Onyx 作為 MCP Server 供 Agent 查詢；驗證 Onyx 對 ADO Wiki 的索引方式
 - 以同一批舊 URD / 掃描 PDF 樣本對比 Onyx、RAGFlow（DeepDoc）、WeKnora 的解析與檢索品質；並以 PM 實際訪談流程對比 Onyx Assistants 與 WeKnora Agent 模式的使用體驗，決定是否導入 RAGFlow 作前處理層或以 WeKnora 補足 Agent / 自動 Wiki 角色
